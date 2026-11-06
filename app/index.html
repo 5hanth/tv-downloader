@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV Downloads</title>
+<!-- Inline CSS/JS on purpose: TizenBrew's module proxy doesn't forward Content-Type headers. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #101418; color: #e8e6e3;
+  font-family: "Samsung One", "Noto Sans", sans-serif; }
+body { font-size: 1.5vw; }
+#top { position: absolute; left: 0; right: 0; top: 0; height: 20vh; display: flex; align-items: center;
+  padding: 0 3vw; background: #0b0e11; border-bottom: 0.2vh solid #222a31; }
+#brand { font-size: 2.3vw; font-weight: 700; color: #f2b84b; margin-right: 3vw; white-space: nowrap; }
+#tabs { display: flex; flex: 1; }
+.tab { font-size: 1.7vw; padding: 1vh 1.8vw; margin-right: 1vw; border-radius: 1vh; color: #9aa4ad; border: 0.3vh solid transparent; }
+.tab.active { color: #fff; background: #1f2a33; }
+.tab.focus { border-color: #f2b84b; color: #fff; }
+#connect { display: flex; align-items: center; }
+#qr { width: 15vh; height: 15vh; background: #fff; border-radius: 0.8vh; padding: 0.6vh; margin-left: 1.5vw; }
+#qr img { width: 100%; height: 100%; image-rendering: pixelated; }
+#urls { text-align: right; font-size: 1.15vw; color: #9aa4ad; line-height: 1.5; }
+#urls b { color: #e8e6e3; font-size: 1.4vw; }
+#list { position: absolute; left: 0; right: 0; top: 20vh; bottom: 7vh; overflow: hidden; padding: 2vh 3vw; }
+#listInner { position: relative; }
+.row { background: #182027; border-radius: 1.2vh; padding: 1.6vh 1.6vw; margin-bottom: 1.4vh; border: 0.35vh solid transparent; display: flex; align-items: center; }
+.row.focus { border-color: #f2b84b; background: #1f2a33; }
+.row .main { flex: 1; min-width: 0; }
+.row .name { font-size: 1.55vw; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .sub { font-size: 1.05vw; color: #8a959f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.4vh; }
+.row .info { font-size: 1.15vw; color: #b9c2ca; margin-top: 0.6vh; }
+.row .err { color: #ff8a80; }
+.row .warn { color: #ffcc80; }
+.row .right { text-align: right; margin-left: 2vw; white-space: nowrap; font-size: 1.2vw; color: #9aa4ad; }
+.st { display: inline-block; padding: 0.2vh 0.8vw; border-radius: 1vh; font-size: 1vw; margin-right: 0.8vw; background: #2b3640; color: #ddd; }
+.st.done { background: #24502a; } .st.downloading, .st.retrying, .st.queued { background: #5a4a1a; } .st.error { background: #5a1f1f; }
+.bar { height: 0.7vh; background: #2b3640; border-radius: 0.4vh; margin-top: 0.8vh; }
+.bar i { display: block; height: 100%; background: #f2b84b; border-radius: 0.4vh; }
+#empty { position: absolute; left: 0; right: 0; top: 45vh; text-align: center; color: #8a959f; font-size: 1.7vw; padding: 0 10vw; }
+#foot { position: absolute; left: 0; right: 0; bottom: 0; height: 7vh; display: flex; align-items: center; padding: 0 3vw;
+  font-size: 1.1vw; color: #6f7a84; background: #0b0e11; border-top: 0.2vh solid #222a31; }
+#foot span { margin-right: 2.5vw; white-space: nowrap; }
+#status { margin-left: auto; margin-right: 0 !important; }
+.key { display: inline-block; width: 1.1vw; height: 1.1vw; border-radius: 0.2vw; vertical-align: middle; margin-right: 0.4vw; background: #d33; }
+#toast { position: absolute; left: 50%; bottom: 10vh; transform: translateX(-50%); background: #2b3640; color: #fff; padding: 1.2vh 2vw;
+  border-radius: 1vh; font-size: 1.3vw; display: none; }
+#player { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: #000; display: none; }
+#player.open { display: block; }
+#video { width: 100%; height: 100%; }
+#osd { position: absolute; left: 0; right: 0; bottom: 0; padding: 3vh 3vw; background: linear-gradient(transparent, rgba(0,0,0,0.85)); transition: opacity 0.4s; }
+#osd.hide { opacity: 0; }
+#osdTitle { font-size: 1.6vw; font-weight: 700; margin-bottom: 1.2vh; }
+#osdBar { height: 0.8vh; background: rgba(255,255,255,0.25); border-radius: 0.4vh; }
+#osdBar i { display: block; height: 100%; background: #f2b84b; border-radius: 0.4vh; width: 0; }
+#osdTime { font-size: 1.1vw; color: #ccc; margin-top: 1vh; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div id="top">
+  <div id="brand">TV Downloads</div>
+  <div id="tabs"></div>
+  <div id="connect"><div id="urls">Starting…</div><div id="qr"></div></div>
+</div>
+<div id="list"><div id="listInner"></div></div>
+<div id="empty"></div>
+<div id="foot">
+  <span id="hint1">▲▼ select</span>
+  <span id="hint2">OK download / stop</span>
+  <span id="hint3"><i class="key"></i>remove</span>
+  <span>◀ ▶ switch tab</span>
+  <span id="status"></span>
+</div>
+<div id="toast"></div>
+<div id="player">
+  <video id="video"></video>
+  <div id="osd"><div id="osdTitle"></div><div id="osdBar"><i></i></div><div id="osdTime"><span id="osdCur"></span><span id="osdHint">OK play/pause · ◀▶ 10s · ▲▼ 1 min · BACK close</span><span id="osdDur"></span></div></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var API = 'http://127.0.0.1:8091';
+  var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8, RED: 403,
+    PLAYPAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412 };
+  var TABS = ['Links', 'Downloads'];
+  var $ = function (id) { return document.getElementById(id); };
+
+  var st = { tab: 0, index: 0, zone: 'list', state: null, files: [], qrFor: null, pendingDelete: null, offline: 0 };
+
+  // ---------------------------------------------------------------- api
+  function call(method, path, cb) {
+    var r = new XMLHttpRequest();
+    r.open(method, API + path, true);
+    r.timeout = 8000;
+    r.onload = function () { var d = null; try { d = JSON.parse(r.responseText); } catch (e) {} if (cb) cb(r.status >= 200 && r.status < 300 ? null : new Error('HTTP ' + r.status), d); };
+    r.onerror = r.ontimeout = function () { if (cb) cb(new Error('service unreachable')); };
+    r.send();
+  }
+
+  // ---------------------------------------------------------------- formatting
+  function fmt(n) { if (n == null) return '?'; var u = ['B', 'KB', 'MB', 'GB'], i = 0; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function clock(t) { if (!isFinite(t)) return '--:--'; t = Math.floor(t); var h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60; return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (s < 10 ? '0' : '') + s; }
+  function eta(l) { if (!l.speed || !l.total) return ''; var s = (l.total - l.bytes) / l.speed; return ' · ' + clock(s) + ' left'; }
+
+  var toastTimer;
+  function toast(msg) { var t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.style.display = 'none'; }, 2500); }
+
+  // ---------------------------------------------------------------- render
+  function renderTabs() {
+    var h = '';
+    for (var i = 0; i < TABS.length; i++) {
+      var label = TABS[i] + (i === 0 && st.state ? ' (' + st.state.links.length + ')' : i === 1 ? ' (' + st.files.length + ')' : '');
+      h += '<div class="tab' + (i === st.tab ? ' active' : '') + (st.zone === 'tabs' && i === st.tab ? ' focus' : '') + '">' + label + '</div>';
+    }
+    $('tabs').innerHTML = h;
+  }
+
+  function renderConnect() {
+    var s = st.state;
+    if (!s) { $('urls').innerHTML = st.offline > 2 ? 'Service not running.<br>Reopen the module.' : 'Starting…'; return; }
+    var u = s.lan.urls;
+    var lines = 'On your phone or laptop, open<br><b>' + esc(u.mdns) + '</b>';
+    if (u.ip) lines += '<br>or ' + esc(u.ip);
+    if (s.lan.error) lines = '<span style="color:#ff8a80">Web page unavailable: ' + esc(s.lan.error) + '</span>';
+    $('urls').innerHTML = lines;
+    var target = u.ip || u.mdns;
+    if (target !== st.qrFor && window.qrcode) {
+      try {
+        var q = qrcode(0, 'M'); q.addData(target); q.make();
+        $('qr').innerHTML = q.createImgTag(4, 2);
+        st.qrFor = target;
+      } catch (e) {}
+    }
+  }
+
+  function linkRow(l, i) {
+    var pct = l.total ? Math.min(100, Math.floor(100 * l.bytes / l.total)) : 0;
+    var title = l.file || l.name || l.serverName || l.url;
+    var info = '<span class="st ' + l.status + '">' + l.status + '</span>';
+    if (l.status === 'downloading') info += pct + '% · ' + fmt(l.bytes) + ' / ' + fmt(l.total) + ' · ' + fmt(l.speed || 0) + '/s' + eta(l);
+    else if (l.status === 'stopped' && l.bytes) info += fmt(l.bytes) + ' of ' + fmt(l.total) + ' saved — OK to resume';
+    else if (l.status === 'done') info += 'Saved as ' + esc(l.file);
+    else info += l.total ? fmt(l.total) : 'size unknown';
+    if (l.error) info += ' <span class="err">' + esc(l.error) + '</span>';
+    else if (l.warning) info += ' <span class="warn">' + esc(l.warning) + '</span>';
+    if (l.insecureTLS) info += ' <span class="warn">(certificate not verified)</span>';
+    var bar = (l.status === 'downloading' || (l.status === 'stopped' && l.bytes)) && l.total ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : '';
+    return '<div class="row" id="r' + i + '"><div class="main"><div class="name">' + esc(title) + '</div>' +
+      '<div class="sub">' + esc(l.url) + '</div><div class="info">' + info + '</div>' + bar + '</div></div>';
+  }
+
+  function fileRow(f, i) {
+    var d = new Date(f.mtime);
+    return '<div class="row" id="r' + i + '"><div class="main"><div class="name">' + esc(f.name) + '</div></div>' +
+      '<div class="right">' + fmt(f.size) + '<br>' + d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear() + '</div></div>';
+  }
+
+  function items() { return st.tab === 0 ? (st.state ? st.state.links : []) : st.files; }
+
+  function render() {
+    renderTabs();
+    renderConnect();
+    var list = items(), h = '';
+    if (st.index >= list.length) st.index = Math.max(0, list.length - 1);
+    for (var i = 0; i < list.length; i++) h += st.tab === 0 ? linkRow(list[i], i) : fileRow(list[i], i);
+    $('listInner').innerHTML = h;
+    var s = st.state;
+    $('empty').innerHTML = list.length ? '' : !s ? '' : st.tab === 0 ?
+      'No links yet.<br>Open the address shown at the top right on your phone or laptop and paste a download link.' :
+      (s.drive ? 'Nothing downloaded yet.' : 'No USB drive connected.');
+    $('hint2').textContent = st.tab === 0 ? 'OK download / stop' : 'OK play';
+    $('hint3').innerHTML = '<i class="key"></i>' + (st.tab === 0 ? 'remove link' : 'delete file');
+    $('status').textContent = s ? (s.drive ? 'USB: ' + s.drive.name + (s.drive.fs ? ' (' + s.drive.fs + ')' : '') : 'No USB drive') + (s.mdns && s.mdns.status !== 'ok' ? ' · tv-dl.local: ' + s.mdns.status : '') : '';
+    focus();
+  }
+
+  var offset = 0;
+  function focus() {
+    var el = $('r' + st.index);
+    var inner = $('listInner');
+    if (!el || st.zone !== 'list') { if (!el) offset = 0; inner.style.transform = 'translateY(' + (-offset) + 'px)'; return; }
+    el.className += ' focus';
+    var top = el.offsetTop, bottom = top + el.offsetHeight, view = $('list').clientHeight * 0.92;
+    if (top < offset) offset = top; else if (bottom > offset + view) offset = bottom - view;
+    inner.style.transform = 'translateY(' + (-Math.max(0, offset)) + 'px)';
+  }
+
+  // ---------------------------------------------------------------- polling
+  function poll() {
+    call('GET', '/state', function (err, d) {
+      if (err) { st.offline++; st.state = null; } else { st.offline = 0; st.state = d; }
+      if (!$('player').className) render();
+    });
+  }
+  function pollFiles(cb) {
+    call('GET', '/files', function (err, d) { if (!err && d) st.files = d.files; if (cb) cb(); else if (!$('player').className) render(); });
+  }
+  function schedule() {
+    var busy = st.state && st.state.active;
+    setTimeout(function () { poll(); schedule(); }, busy ? 1000 : 3000);
+  }
+  setInterval(function () { if (st.tab === 1) pollFiles(); }, 5000);
+
+  // ---------------------------------------------------------------- actions
+  function activate() {
+    var it = items()[st.index];
+    if (!it) return;
+    if (st.tab === 1) return play(it.name);
+    if (it.status === 'downloading' || it.status === 'queued' || it.status === 'retrying') {
+      call('POST', '/links/' + it.id + '/stop', poll); toast('Stopped. Press OK again to resume.');
+    } else if (it.status === 'done' && it.file) {
+      play(it.file);
+    } else {
+      if (st.state && !st.state.drive) return toast('Connect a USB drive first');
+      call('POST', '/links/' + it.id + '/download', poll); toast('Download started');
+    }
+  }
+
+  function removeCurrent() {
+    var it = items()[st.index];
+    if (!it) return;
+    var key = st.tab + ':' + (it.id || it.name);
+    if (st.pendingDelete !== key) {
+      st.pendingDelete = key;
+      setTimeout(function () { if (st.pendingDelete === key) st.pendingDelete = null; }, 3000);
+      return toast(st.tab === 0 ? 'Press RED again to remove this link' : 'Press RED again to DELETE this file from the USB drive');
+    }
+    st.pendingDelete = null;
+    if (st.tab === 0) call('POST', '/links/' + it.id + '/delete', function () { toast('Link removed'); poll(); });
+    else call('POST', '/files/delete?name=' + encodeURIComponent(it.name), function (err) { toast(err ? 'Delete failed' : 'File deleted'); pollFiles(); });
+  }
+
+  function switchTab(t) {
+    st.tab = (t + TABS.length) % TABS.length;
+    st.index = 0; offset = 0;
+    if (st.tab === 1) pollFiles(); else render();
+  }
+
+  // ---------------------------------------------------------------- player
+  var v = $('video'), osdTimer;
+  function showOSD() {
+    $('osd').className = '';
+    clearTimeout(osdTimer);
+    osdTimer = setTimeout(function () { if (!v.paused) $('osd').className = 'hide'; }, 3500);
+  }
+  function play(name) {
+    $('player').className = 'open';
+    $('osdTitle').textContent = name;
+    v.src = API + '/file?name=' + encodeURIComponent(name);
+    v.play();
+    showOSD();
+  }
+  function closePlayer() {
+    v.pause(); v.removeAttribute('src'); v.load();
+    $('player').className = '';
+    render();
+  }
+  v.ontimeupdate = function () {
+    $('osdCur').textContent = clock(v.currentTime);
+    $('osdDur').textContent = clock(v.duration);
+    $('osdBar').firstChild.style.width = (v.duration ? 100 * v.currentTime / v.duration : 0) + '%';
+  };
+  v.onerror = function () { toast('Cannot play this file (format not supported by the TV)'); setTimeout(closePlayer, 2500); };
+  v.onended = function () { showOSD(); };
+  function seek(d) { if (isFinite(v.duration)) v.currentTime = Math.max(0, Math.min(v.duration - 1, v.currentTime + d)); showOSD(); }
+
+  // ---------------------------------------------------------------- input
+  document.addEventListener('keydown', function (e) {
+    var k = e.keyCode, handled = true;
+    if ($('player').className) {
+      if (k === KEY.ENTER || k === KEY.PLAYPAUSE) { if (v.paused) v.play(); else v.pause(); showOSD(); }
+      else if (k === KEY.PLAY) { v.play(); showOSD(); }
+      else if (k === KEY.PAUSE) { v.pause(); showOSD(); }
+      else if (k === KEY.RIGHT || k === KEY.FF) seek(10);
+      else if (k === KEY.LEFT || k === KEY.RW) seek(-10);
+      else if (k === KEY.UP) seek(60);
+      else if (k === KEY.DOWN) seek(-60);
+      else if (k === KEY.BACK || k === KEY.STOP || k === KEY.ESC || k === KEY.BACKSPACE) closePlayer();
+      else handled = false;
+    } else if (st.zone === 'tabs') {
+      if (k === KEY.LEFT) switchTab(st.tab - 1);
+      else if (k === KEY.RIGHT) switchTab(st.tab + 1);
+      else if (k === KEY.DOWN || k === KEY.ENTER) { st.zone = 'list'; render(); }
+      else if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) history.back();
+      else handled = false;
+    } else {
+      var n = items().length;
+      if (k === KEY.DOWN && st.index < n - 1) { st.index++; render(); }
+      else if (k === KEY.UP && st.index > 0) { st.index--; render(); }
+      else if (k === KEY.UP) { st.zone = 'tabs'; render(); }
+      else if (k === KEY.LEFT) switchTab(st.tab - 1);
+      else if (k === KEY.RIGHT) switchTab(st.tab + 1);
+      else if (k === KEY.ENTER) activate();
+      else if (k === KEY.RED) removeCurrent();
+      else if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) { st.zone = 'tabs'; render(); }
+      else handled = false;
+    }
+    if (handled) e.preventDefault();
+  });
+
+  if (window.tizen && tizen.tvinputdevice) {
+    ['ColorF0Red', 'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind'].forEach(function (k) {
+      try { tizen.tvinputdevice.registerKey(k); } catch (e) {}
+    });
+  }
+
+  poll();
+  pollFiles();
+  schedule();
+  window.__tvdl = st;
+})();
+</script>
+</body>
+</html>
