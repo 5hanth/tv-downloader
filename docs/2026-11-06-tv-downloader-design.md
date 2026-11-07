@@ -37,3 +37,21 @@ TV: Samsung UA32N4300 (2018, Tizen 4), TizenBrew 2.0.5. Feasibility proven in
 - mDNS coexisting with Tizen's responder.
 - Loading the CA bundle under Node 4.4.3.
 - Remote media keys.
+
+## 2026-11-07 — uploads ("AirDrop-like")
+- AirDrop isn't possible: it's Apple-only and uses AWDL. Instead:
+  - Write-only upload endpoint `PUT/POST /api/upload?name=` on the LAN server.
+  - A drop zone on the web page.
+  - `mac/send-to-tv.sh` and a Finder Quick Action.
+- The user accepted that the web page can now write files, still without a PIN.
+- Tested on the Mac:
+  - A 50 MB upload arrived with a matching MD5.
+  - Tamil and Unicode filenames come through intact (fixed a byte-encoding bug in the bash URL-encoder).
+  - `../../evil.txt` is saved as `Downloads/evil.txt`.
+  - An aborted upload leaves no partial file.
+  - The LAN port still returns 404 for listing and reading files.
+- **Verified on the real TV:**
+  - `tv-dl.local` resolves to 192.168.0.127 over mDNS (it coexists with Tizen's responder).
+  - Port 80 isn't allowed, so the page is served on **8090**.
+  - Inbound LAN connections work.
+  - The pen drive is seen as `USBDriveA1` (vfat).

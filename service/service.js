@@ -36,7 +36,8 @@ var S = {
   lan: { ip: null, port: null, error: null },
   mdns: { status: 'starting' },
   ca: null,             // array of PEM strings, if loaded
-  storeDir: null
+  storeDir: null,
+  uploads: {}           // id -> {name, bytes, total, status, error, at}
 };
 var current = null;     // { req, out, link }
 
@@ -186,7 +187,7 @@ function loadCA() {
 // ------------------------------------------------------------------ filenames
 function sanitize(name) {
   name = String(name || '').replace(/[\\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim();
-  name = name.replace(/^\.+/, '');
+  name = name.replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');   // no leading dots/spaces (hidden or traversal-looking), no trailing dots (FAT)
   if (name.length > 180) {
     var ext = path.extname(name);
     name = name.slice(0, 180 - ext.length) + ext;
@@ -430,6 +431,52 @@ function addLinks(text, name) {
 
 function gb(n) { return (n / 1073741824).toFixed(2) + ' GB'; }
 
+// ------------------------------------------------------------------ uploads (LAN: write-only into Downloads/)
+function handleUpload(req, res, u) {
+  var name = sanitize(u.query.name || req.headers['x-filename'] || '');
+  if (!u.query.name && !req.headers['x-filename']) return json(res, 400, { error: 'Missing ?name=' });
+  var d = drive();
+  if (!d) return json(res, 409, { error: 'No USB drive connected to the TV' });
+  var total = req.headers['content-length'] ? Number(req.headers['content-length']) : null;
+  if (d.fs === 'vfat' && total && total > FAT32_MAX) return json(res, 413, { error: 'File is ' + gb(total) + ' but the USB drive is FAT32 (max 4 GB per file).' });
+  try { mkdirp(d.downloads); } catch (e) { return json(res, 500, { error: 'Cannot create Downloads folder: ' + (e.code || e.message) }); }
+  var id = newId();
+  var part = path.join(d.downloads, '.tvdl-up-' + id + '.part');
+  var up = S.uploads[id] = { name: name, bytes: 0, total: total, status: 'receiving', at: now() };
+  var out = fs.createWriteStream(part);
+  var finished = false;
+  function cleanup(status, err) {
+    if (finished) return; finished = true;
+    up.status = status; up.error = err || null;
+    try { fs.unlinkSync(part); } catch (e) {}
+    setTimeout(function () { delete S.uploads[id]; }, 60000);
+  }
+  req.on('data', function (c) { up.bytes += c.length; });
+  req.on('aborted', function () { out.end(); cleanup('cancelled', 'Upload interrupted'); });
+  out.on('error', function (e) {
+    req.unpipe(out); req.resume();
+    var msg = 'Write failed: ' + (e.code || e.message) + (e.code === 'ENOSPC' ? ' (USB drive is full)' : '');
+    cleanup('error', msg);
+    json(res, 500, { error: msg });
+  });
+  out.on('finish', function () {
+    if (finished) return;
+    if (total && up.bytes < total) return cleanup('cancelled', 'Upload incomplete');
+    try {
+      var dest = uniquePath(d.downloads, name);
+      fs.renameSync(part, dest);
+      finished = true;
+      up.status = 'done'; up.file = path.basename(dest);
+      setTimeout(function () { delete S.uploads[id]; }, 60000);
+      json(res, 200, { ok: true, file: up.file, bytes: up.bytes });
+    } catch (e) {
+      cleanup('error', 'Could not save: ' + (e.code || e.message));
+      json(res, 500, { error: up.error });
+    }
+  });
+  req.pipe(out);
+}
+
 // ------------------------------------------------------------------ files on the drive
 function listFiles() {
   var d = drive();
@@ -616,11 +663,12 @@ function state() {
     mdns: S.mdns,
     tls: S.ca ? 'bundle' : 'builtin',
     active: S.active,
+    uploads: S.uploads,
     links: S.links.map(publicLink)
   };
 }
 
-// LAN server: add/list/remove links only.
+// LAN server: add/list/remove links, and upload new files into Downloads/ (write-only: no listing, reading or deleting files).
 function lanHandler(req, res) {
   var u = urlLib.parse(req.url, true);
   if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/index.html')) {
@@ -634,6 +682,7 @@ function lanHandler(req, res) {
   if (req.method === 'POST' && u.pathname === '/api/links') {
     return readBody(req, function (b) { json(res, 200, addLinks(b.url || b.urls, b.name)); });
   }
+  if ((req.method === 'POST' || req.method === 'PUT') && u.pathname === '/api/upload') return handleUpload(req, res, u);
   var m = /^\/api\/links\/([a-z0-9]+)\/delete$/.exec(u.pathname || '');
   if (req.method === 'POST' && m) return json(res, removeLink(m[1]) ? 200 : 404, { ok: true });
   if (u.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
@@ -700,11 +749,14 @@ var WEB_PAGE = [
   '.st.done{background:#24502a}.st.downloading,.st.retrying{background:#5a4a1a}.st.error{background:#5a1f1f}',
   '.del{background:#2b3640;color:#ddd;margin:0;padding:6px 12px;font-size:13px}.bar{height:4px;background:#2b3640;border-radius:2px;margin-top:6px}',
   '.bar i{display:block;height:4px;background:#f2b84b;border-radius:2px}.warn{color:#ffcc80;font-size:13px;margin-top:4px}',
+  '.drop{border:2px dashed #2b3640;border-radius:10px;padding:26px 14px;text-align:center;color:#9aa4ad;margin-top:6px}.drop.over{border-color:#f2b84b;color:#fff;background:#182027}',
+  '.pickl{color:#f2b84b;text-decoration:underline;cursor:pointer;display:inline;margin:0;font-size:inherit}.ok{color:#7fd17f}',
   '</style></head><body><main>',
   '<h1>TV Downloads</h1><div class="sub">Add direct download links here. Start downloads from the TV. Files go to the TV\'s USB drive.</div>',
   '<form id="f"><label>Link(s) - one per line</label><textarea id="urls" placeholder="https://example.org/video.mp4" required></textarea>',
   '<label>Name (optional, single link only)</label><input id="name" placeholder="My video">',
   '<button type="submit">Add to TV</button><div id="msg" class="msg"></div></form>',
+  '<h2>Send files from this device</h2><div id="drop" class="drop">Drop files here, or <label for="pick" class="pickl">choose files</label><br><span class="sub">Saved straight to the TV\'s Downloads (max 4 GB per file on FAT32 drives)</span><input type="file" id="pick" multiple style="display:none"></div><div id="ups"></div>',
   '<h2>Links on the TV <span id="drive" class="sub"></span></h2><div id="list"></div></main>',
   '<script>',
   'function fmt(n){if(n==null)return"?";var u=["B","KB","MB","GB"],i=0;while(n>=1024&&i<3){n/=1024;i++}return n.toFixed(i?1:0)+" "+u[i]}',
@@ -723,6 +775,18 @@ var WEB_PAGE = [
   ' fetch("/api/links",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({urls:document.getElementById("urls").value,name:document.getElementById("name").value})})',
   ' .then(function(r){return r.json()}).then(function(d){m.className="msg "+(d.errors.length?"err":"ok");m.textContent="Added "+d.added+(d.errors.length?" · "+d.errors.join("; "):"");',
   ' if(d.added){document.getElementById("urls").value="";document.getElementById("name").value=""}load()}).catch(function(){m.className="msg err";m.textContent="Could not reach the TV"})};',
+  'var q=[],busy=false;function addFiles(fl){for(var i=0;i<fl.length;i++)q.push(fl[i]);next()}',
+  'function next(){if(busy||!q.length)return;busy=true;var f=q.shift();var row=document.createElement("div");row.className="item";',
+  ' row.innerHTML="<div class=main><div class=name>"+esc(f.name)+"</div><div class=meta>"+fmt(f.size)+" · <span class=s>starting…</span></div><div class=bar><i style=\\"width:0%\\"></i></div></div>";',
+  ' var ups=document.getElementById("ups");ups.insertBefore(row,ups.firstChild);var st=row.querySelector(".s"),bar=row.querySelector(".bar i");',
+  ' var x=new XMLHttpRequest();x.open("PUT","/api/upload?name="+encodeURIComponent(f.name));',
+  ' x.upload.onprogress=function(e){if(e.lengthComputable){var p=Math.round(100*e.loaded/e.total);bar.style.width=p+"%";st.textContent=p+"% · "+fmt(e.loaded)+" sent"}};',
+  ' x.onload=function(){var d={};try{d=JSON.parse(x.responseText)}catch(e){}if(x.status==200){bar.style.width="100%";st.className="s ok";st.textContent="✓ on the TV as "+d.file}else{st.className="s err";st.textContent="✗ "+(d.error||("HTTP "+x.status))}busy=false;next()};',
+  ' x.onerror=function(){st.className="s err";st.textContent="✗ could not reach the TV";busy=false;next()};x.send(f)}',
+  'var dz=document.getElementById("drop");dz.ondragover=function(e){e.preventDefault();dz.className="drop over"};dz.ondragleave=function(){dz.className="drop"};',
+  'dz.ondrop=function(e){e.preventDefault();dz.className="drop";addFiles(e.dataTransfer.files)};',
+  'document.getElementById("pick").onchange=function(){addFiles(this.files);this.value=""};',
+  'window.onbeforeunload=function(){if(busy||q.length)return "Uploads are still running"};',
   'load();setInterval(load,3000);',
   '</script></body></html>'
 ].join('\n');

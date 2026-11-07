@@ -173,7 +173,10 @@ body { font-size: 1.5vw; }
       (s.drive ? 'Nothing downloaded yet.' : 'No USB drive connected.');
     $('hint2').textContent = st.tab === 0 ? 'OK download / stop' : 'OK play';
     $('hint3').innerHTML = '<i class="key"></i>' + (st.tab === 0 ? 'remove link' : 'delete file');
-    $('status').textContent = s ? (s.drive ? 'USB: ' + s.drive.name + (s.drive.fs ? ' (' + s.drive.fs + ')' : '') : 'No USB drive') + (s.mdns && s.mdns.status !== 'ok' ? ' · tv-dl.local: ' + s.mdns.status : '') : '';
+    var recv = '';
+    if (s && s.uploads) for (var uid in s.uploads) { var up = s.uploads[uid]; if (up.status === 'receiving') recv = 'Receiving ' + up.name + (up.total ? ' ' + Math.floor(100 * up.bytes / up.total) + '%' : ' ' + fmt(up.bytes)) + ' · '; else if (up.status === 'done' && Date.now() - up.at < 15000) recv = 'Received ' + up.file + ' · '; }
+    $('status').textContent = recv + (s ? (s.drive ? 'USB: ' + s.drive.name + (s.drive.fs ? ' (' + s.drive.fs + ')' : '') : 'No USB drive') + (s.mdns && s.mdns.status !== 'ok' ? ' · tv-dl.local: ' + s.mdns.status : '') : '');
+    if (recv && st.tab === 1 && !st.recvSeen) { st.recvSeen = true; pollFiles(); } else if (!recv) st.recvSeen = false;
     focus();
   }
 
