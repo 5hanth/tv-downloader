@@ -26,12 +26,18 @@ find_tv() {
 [ $# -eq 0 ] && { echo "usage: $0 FILE..."; exit 1; }
 BASE=$(find_tv) || { say "TV not reachable (is TV Downloads open in TizenBrew?)"; notify "Send to TV" "TV not reachable. Open TV Downloads on the TV and try again."; exit 1; }
 
+# drive format, so files over 4 GB are refused before uploading (FAT32 can't hold them)
+FS=$(curl -4 -s -m 5 "$BASE/api/links" | sed -n 's/.*"drive":{[^}]*"fs":"\([^"]*\)".*/\1/p')
 ok=0; fail=0
 for f in "$@"; do
   name=$(basename "$f")
   if [ ! -f "$f" ]; then say "skip (not a file): $f"; fail=$((fail+1)); continue; fi
   size=$(stat -f %z "$f")
-  if [ "$size" -gt 4294967295 ]; then say "warning: $name is over 4 GB; the TV refuses it on FAT32 drives"; fi
+  if [ "$size" -gt 4294967295 ] && [ "$FS" = "vfat" ]; then
+    say "failed: $name is $(( size / 1073741824 )) GB; the TV's pen drive is FAT32 (max 4 GB per file)"; fail=$((fail+1))
+    notify "Send to TV failed" "$name is too big for the FAT32 pen drive (max 4 GB per file). Use an exFAT drive."
+    continue
+  fi
   notify "Sending to TV" "$name ($(( size / 1048576 )) MB)"
   say "sending $name → $BASE"
   progress=(-s); [ -t 1 ] && progress=(--progress-bar)

@@ -1,6 +1,6 @@
 {
   "name": "tv-downloader",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Download manager for Samsung Tizen TVs (TizenBrew): add links from your phone at http://tv-dl.local, download to USB from the TV, browse and play.",
   "packageType": "app",
   "appName": "TV Downloads",

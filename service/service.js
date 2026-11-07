@@ -698,7 +698,9 @@ function lanHandler(req, res) {
   }
   if (req.method === 'GET' && u.pathname === '/api/links') {
     var d = drive();
-    return json(res, 200, { drive: d ? { name: d.name, fs: d.fs } : null, links: S.links.map(publicLink) });
+    refreshSpace(false);
+    var sp = d && space.value && space.value.drive === d.name ? space.value : null;
+    return json(res, 200, { drive: d ? { name: d.name, fs: d.fs, free: sp && sp.source === 'df' ? sp.free : null } : null, links: S.links.map(publicLink) });
   }
   if (req.method === 'POST' && u.pathname === '/api/links') {
     return readBody(req, function (b) { json(res, 200, addLinks(b.url || b.urls, b.name)); });
@@ -783,7 +785,7 @@ var WEB_PAGE = [
   '<script>',
   'function fmt(n){if(n==null)return"?";var u=["B","KB","MB","GB"],i=0;while(n>=1024&&i<3){n/=1024;i++}return n.toFixed(i?1:0)+" "+u[i]}',
   'function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c]})}',
-  'function load(){fetch("/api/links").then(function(r){return r.json()}).then(function(d){',
+  'var driveInfo=null;function load(){fetch("/api/links").then(function(r){return r.json()}).then(function(d){driveInfo=d.drive;',
   ' document.getElementById("drive").textContent=d.drive?"· USB: "+d.drive.name+(d.drive.fs?" ("+d.drive.fs+")":""):"· no USB drive connected";',
   ' var h="";d.links.forEach(function(l){var pct=l.total?Math.min(100,Math.round(100*l.bytes/l.total)):0;',
   '  h+="<div class=item><div class=main><div class=name>"+esc(l.file||l.name||l.serverName||(l.status=="checking"?"(checking…)":l.url))+"</div><div class=url>"+esc(l.url)+"</div>"+',
@@ -801,10 +803,12 @@ var WEB_PAGE = [
   'function next(){if(busy||!q.length)return;busy=true;var f=q.shift();var row=document.createElement("div");row.className="item";',
   ' row.innerHTML="<div class=main><div class=name>"+esc(f.name)+"</div><div class=meta>"+fmt(f.size)+" · <span class=s>starting…</span></div><div class=bar><i style=\\"width:0%\\"></i></div></div>";',
   ' var ups=document.getElementById("ups");ups.insertBefore(row,ups.firstChild);var st=row.querySelector(".s"),bar=row.querySelector(".bar i");',
+  ' var why=!driveInfo?"No USB drive is connected to the TV":(driveInfo.fs=="vfat"&&f.size>4294967295)?"Too big: "+fmt(f.size)+". This pen drive is FAT32, which can only hold files up to 4 GB. Use an exFAT-formatted drive for bigger files.":(driveInfo.free!=null&&f.size>driveInfo.free)?"Not enough space on the pen drive ("+fmt(driveInfo.free)+" free)":"";',
+  ' if(why){st.className="s err";st.textContent="✗ "+why;bar.parentNode.style.display="none";busy=false;next();return}',
   ' var x=new XMLHttpRequest();x.open("PUT","/api/upload?name="+encodeURIComponent(f.name));',
   ' x.upload.onprogress=function(e){if(e.lengthComputable){var p=Math.round(100*e.loaded/e.total);bar.style.width=p+"%";st.textContent=p+"% · "+fmt(e.loaded)+" sent"}};',
   ' x.onload=function(){var d={};try{d=JSON.parse(x.responseText)}catch(e){}if(x.status==200){bar.style.width="100%";st.className="s ok";st.textContent="✓ on the TV as "+d.file}else{st.className="s err";st.textContent="✗ "+(d.error||("HTTP "+x.status))}busy=false;next()};',
-  ' x.onerror=function(){st.className="s err";st.textContent="✗ could not reach the TV";busy=false;next()};x.send(f)}',
+  ' x.onerror=function(){var sent=bar.style.width;fetch("/api/links").then(function(){st.className="s err";st.textContent="✗ Upload interrupted at "+sent+" (the TV is still reachable, try again)";}).catch(function(){st.className="s err";st.textContent="✗ Lost connection to the TV at "+sent+". It may have turned off or dropped off Wi-Fi.";});busy=false;next()};x.send(f)}',
   'var dz=document.getElementById("drop");dz.ondragover=function(e){e.preventDefault();dz.className="drop over"};dz.ondragleave=function(){dz.className="drop"};',
   'dz.ondrop=function(e){e.preventDefault();dz.className="drop";addFiles(e.dataTransfer.files)};',
   'document.getElementById("pick").onchange=function(){addFiles(this.files);this.value=""};',
