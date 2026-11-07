@@ -18,7 +18,7 @@ find_tv() {
   local candidates="${TV_URL:-} http://tv-dl.local http://tv-dl.local:8090"
   [ -n "${TV_IP:-}" ] && candidates="$candidates http://$TV_IP http://$TV_IP:8090"
   for u in $candidates; do
-    if [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$u/api/links")" = "200" ]; then echo "$u"; return 0; fi
+    if [ "$(curl -4 -s -m 3 -o /dev/null -w '%{http_code}' "$u/api/links")" = "200" ]; then echo "$u"; return 0; fi
   done
   return 1
 }
@@ -36,7 +36,7 @@ for f in "$@"; do
   say "sending $name → $BASE"
   progress=(-s); [ -t 1 ] && progress=(--progress-bar)
   resp=$(mktemp)
-  code=$(curl "${progress[@]}" -T "$f" "$BASE/api/upload?name=$(urlenc "$name")" -o "$resp" -w '%{http_code}')
+  code=$(curl -4 "${progress[@]}" -T "$f" "$BASE/api/upload?name=$(urlenc "$name")" -o "$resp" -w '%{http_code}')
   if [ "$code" = "200" ]; then
     saved=$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$resp")
     say "done: $name → Downloads/$saved"; ok=$((ok+1))

@@ -23,7 +23,7 @@ var LAN_PORTS = (env.TVDL_LAN_PORTS || '80,8090').split(',').map(Number);
 var LOCAL_PORT = Number(env.TVDL_LOCAL_PORT || 8091);
 var LAN_HOST = env.TVDL_LAN_HOST || '0.0.0.0';   // dev overrides to 127.0.0.1
 var MDNS_ENABLED = env.TVDL_NO_MDNS !== '1';
-var MDNS_NAME = 'tv-dl.local';
+var MDNS_NAME = env.TVDL_MDNS_NAME || 'tv-dl.local';
 var CA_URL = env.TVDL_CA_URL || 'https://cdn.jsdelivr.net/gh/5hanth/tv-downloader@main/service/cacert.pem';
 var FAT32_MAX = 4294967295;
 var UA = 'Mozilla/5.0 (SMART-TV; Linux; Tizen 4.0) TVDownloader/0.1';
@@ -558,6 +558,17 @@ function readName(buf, off) {
   return { name: labels.join('.').toLowerCase(), end: end };
 }
 
+function nsecRecord(flush) {
+  var name = encodeName(MDNS_NAME);
+  var rdata = Buffer.concat([name, new Buffer([0x00, 0x01, 0x40])]); // next name = self; window 0, 1-byte bitmap, bit for type A
+  var rr = new Buffer(10);
+  rr.writeUInt16BE(47, 0);                      // type NSEC
+  rr.writeUInt16BE(flush ? 0x8001 : 0x0001, 2);
+  rr.writeUInt32BE(120, 4);
+  rr.writeUInt16BE(rdata.length, 8);
+  return Buffer.concat([name, rr, rdata]);
+}
+
 function aRecord(ip, flush) {
   var name = encodeName(MDNS_NAME);
   var rr = new Buffer(10);
@@ -584,7 +595,7 @@ function startMDNS() {
         var qtype = msg.readUInt16BE(q.end), qclass = msg.readUInt16BE(q.end + 2);
         var qStart = off;
         off = q.end + 4;
-        if (q.name !== MDNS_NAME || (qtype !== 1 && qtype !== 255)) continue;
+        if (q.name !== MDNS_NAME || (qtype !== 1 && qtype !== 28 && qtype !== 255)) continue;
         var ip = lanIP();
         if (!ip) return;
         var legacy = rinfo.port !== 5353;
@@ -593,10 +604,15 @@ function startMDNS() {
         if (legacy) hdr.writeUInt16BE(msg.readUInt16BE(0), 0);
         hdr.writeUInt16BE(0x8400, 2);
         hdr.writeUInt16BE(legacy ? 1 : 0, 4);
-        hdr.writeUInt16BE(1, 6);
+        hdr.writeUInt16BE(1, 6);   // one answer
+        hdr.writeUInt16BE(1, 10);  // one additional
         var parts = [hdr];
         if (legacy) parts.push(msg.slice(qStart, off));
-        parts.push(aRecord(ip, !legacy));
+        if (qtype === 28) {        // AAAA: answer "no IPv6" (NSEC), include the A record as additional
+          parts.push(nsecRecord(!legacy), aRecord(ip, !legacy));
+        } else {                   // A / ANY: answer A, add NSEC so the client doesn't wait for AAAA
+          parts.push(aRecord(ip, !legacy), nsecRecord(!legacy));
+        }
         var pkt = Buffer.concat(parts);
         if (legacy) sock.send(pkt, 0, pkt.length, rinfo.port, rinfo.address);
         else if (qclass & 0x8000) sock.send(pkt, 0, pkt.length, rinfo.port, rinfo.address);   // QU: unicast reply
@@ -624,7 +640,8 @@ function announce(sock) {
   hdr.fill(0);
   hdr.writeUInt16BE(0x8400, 2);
   hdr.writeUInt16BE(1, 6);
-  var pkt = Buffer.concat([hdr, aRecord(ip, true)]);
+  hdr.writeUInt16BE(1, 10);
+  var pkt = Buffer.concat([hdr, aRecord(ip, true), nsecRecord(true)]);
   try { sock.send(pkt, 0, pkt.length, 5353, '224.0.0.251'); } catch (e) {}
 }
 
