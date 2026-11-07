@@ -56,6 +56,7 @@ The TV is found automatically at `tv-dl.local` (ports 80 and 8090), then at the 
 - **FAT32 guard:** files larger than 4 GB are refused on `vfat` drives. Use exFAT for big files.
 - Uploads stream straight to the drive as `.tvdl-up-*.part` and are renamed when complete. Interrupted uploads leave nothing behind.
   The TV's status bar shows *Receiving …*.
+- **Storage meter** in the top bar: free / total space on the pen drive (via `df`). If the TV doesn't allow `df`, it shows the size of Downloads/ instead.
 - Links are stored on the USB drive (`.tvdl/links.json`), so the list travels with the drive.
 - TLS: loads a current Mozilla CA bundle (`service/cacert.pem`) because the TV's Node 4 has outdated roots.
   If verification still fails, the download continues unverified and is labelled *certificate not verified*.

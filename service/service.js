@@ -16,6 +16,7 @@ var os = require('os');
 var dgram = require('dgram');
 var urlLib = require('url');
 var querystring = require('querystring');
+var childProcess = require('child_process');
 
 var env = (typeof process !== 'undefined' && process.env) || {};
 var MEDIA_ROOT = env.TVDL_MEDIA_ROOT || '/opt/media';
@@ -384,6 +385,7 @@ function complete(link, part, d) {
   S.active = null;
   current = null;
   save();
+  refreshSpace(true);
   pump();
 }
 
@@ -467,6 +469,7 @@ function handleUpload(req, res, u) {
       fs.renameSync(part, dest);
       finished = true;
       up.status = 'done'; up.file = path.basename(dest);
+      refreshSpace(true);
       setTimeout(function () { delete S.uploads[id]; }, 60000);
       json(res, 200, { ok: true, file: up.file, bytes: up.bytes });
     } catch (e) {
@@ -673,9 +676,10 @@ function lanURL() {
 
 function state() {
   var d = drive();
+  refreshSpace(false);
   S.lan.ip = lanIP();
   return {
-    drive: d ? { name: d.name, fs: d.fs } : null,
+    drive: d ? { name: d.name, fs: d.fs, space: space.value && space.value.drive === d.name ? space.value : null } : null,
     lan: { port: S.lan.port, error: S.lan.error, urls: lanURL() },
     mdns: S.mdns,
     tls: S.ca ? 'bundle' : 'builtin',
@@ -722,6 +726,7 @@ function localHandler(req, res) {
     var fd = safeFile(u.query.name);
     if (!fd) return json(res, 400, { error: 'bad name' });
     try { fs.unlinkSync(fd); } catch (e) { return json(res, 500, { error: e.code || e.message }); }
+    refreshSpace(true);
     S.links.forEach(function (l) { if (l.file === u.query.name) { l.file = null; l.status = 'deleted'; } });
     save();
     return json(res, 200, { ok: true });
@@ -807,6 +812,32 @@ var WEB_PAGE = [
   'load();setInterval(load,3000);',
   '</script></body></html>'
 ].join('\n');
+
+// ------------------------------------------------------------------ disk space
+// Node 4 has no statfs, so ask `df` (busybox on Tizen). Falls back to the size of Downloads/ if df isn't allowed.
+var space = { at: 0, busy: false, value: null };
+function dirBytes(dir) {
+  var total = 0;
+  try { fs.readdirSync(dir).forEach(function (n) { try { var st = fs.statSync(path.join(dir, n)); if (st.isFile()) total += st.size; } catch (e) {} }); } catch (e) {}
+  return total;
+}
+function refreshSpace(force) {
+  var d = drive();
+  if (!d) { space.value = null; return; }
+  if (space.busy || (!force && now() - space.at < 10000)) return;
+  space.busy = true;
+  var downloads = dirBytes(d.downloads);
+  var done = function (v) { space.busy = false; space.at = now(); v.downloads = downloads; v.drive = d.name; space.value = v; };
+  try {
+    childProcess.execFile('df', ['-k', d.path], { timeout: 5000 }, function (err, stdout) {
+      if (err || !stdout) return done({ source: 'downloads-only' });
+      var lines = String(stdout).split('\n').slice(1).join(' ');
+      var nums = lines.split(/\s+/).filter(function (t) { return /^\d+$/.test(t); }).map(Number);
+      if (nums.length < 3) return done({ source: 'downloads-only' });
+      done({ source: 'df', total: nums[0] * 1024, used: nums[1] * 1024, free: nums[2] * 1024 });
+    });
+  } catch (e) { done({ source: 'downloads-only' }); }
+}
 
 // ------------------------------------------------------------------ start
 load();

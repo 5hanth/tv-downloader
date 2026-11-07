@@ -19,6 +19,11 @@ body { font-size: 1.5vw; }
 .tab.active { color: #fff; background: #1f2a33; }
 .tab.focus { border-color: #f2b84b; color: #fff; }
 #connect { display: flex; align-items: center; }
+#disk { margin-right: 2.5vw; min-width: 17vw; font-size: 1.1vw; color: #9aa4ad; }
+#disk b { color: #e8e6e3; font-size: 1.35vw; }
+#diskBar { height: 0.8vh; background: #2b3640; border-radius: 0.4vh; margin-top: 0.8vh; overflow: hidden; }
+#diskBar i { display: block; height: 100%; background: #4caf7a; border-radius: 0.4vh; }
+#diskBar i.warn { background: #f2b84b; } #diskBar i.full { background: #e05353; }
 #qr { width: 15vh; height: 15vh; background: #fff; border-radius: 0.8vh; padding: 0.6vh; margin-left: 1.5vw; }
 #qr img { width: 100%; height: 100%; image-rendering: pixelated; }
 #urls { text-align: right; font-size: 1.15vw; color: #9aa4ad; line-height: 1.5; }
@@ -63,6 +68,7 @@ body { font-size: 1.5vw; }
 <div id="top">
   <div id="brand">TV Downloads</div>
   <div id="tabs"></div>
+  <div id="disk"></div>
   <div id="connect"><div id="urls">Starting…</div><div id="qr"></div></div>
 </div>
 <div id="list"><div id="listInner"></div></div>
@@ -122,6 +128,18 @@ body { font-size: 1.5vw; }
     $('tabs').innerHTML = h;
   }
 
+  function renderDisk() {
+    var s = st.state, el = $('disk');
+    if (!s || !s.drive) { el.innerHTML = s ? '<b>No USB drive</b>' : ''; return; }
+    var sp = s.drive.space;
+    if (!sp) { el.innerHTML = '<b>' + esc(s.drive.name) + '</b><br>checking space…'; return; }
+    if (sp.source !== 'df') { el.innerHTML = '<b>' + fmt(sp.downloads) + '</b> in Downloads<br>' + esc(s.drive.name) + (s.drive.fs ? ' · ' + esc(s.drive.fs) : ''); return; }
+    var pct = sp.total ? Math.round(100 * sp.used / sp.total) : 0;
+    var cls = pct >= 95 ? 'full' : pct >= 85 ? 'warn' : '';
+    el.innerHTML = '<b>' + fmt(sp.free) + ' free</b> of ' + fmt(sp.total) +
+      '<div id="diskBar"><i class="' + cls + '" style="width:' + pct + '%"></i></div>';
+  }
+
   function renderConnect() {
     var s = st.state;
     if (!s) { $('urls').innerHTML = st.offline > 2 ? 'Service not running.<br>Reopen the module.' : 'Starting…'; return; }
@@ -166,6 +184,7 @@ body { font-size: 1.5vw; }
 
   function render() {
     renderTabs();
+    renderDisk();
     renderConnect();
     var list = items(), h = '';
     if (st.index >= list.length) st.index = Math.max(0, list.length - 1);
