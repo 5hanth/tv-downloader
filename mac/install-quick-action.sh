@@ -81,6 +81,15 @@ cat > "$wf/Contents/document.wflow" <<PLIST
 </dict></plist>
 PLIST
 plutil -lint "$wf/Contents/Info.plist" "$wf/Contents/document.wflow" >/dev/null
-/System/Library/CoreServices/pbs -flush >/dev/null 2>&1 || true
-echo "Installed: ~/bin/send-to-tv and Finder Quick Action \"Send to TV\""
-echo "If it doesn't show in Finder's right-click → Quick Actions, enable it in System Settings → Keyboard → Keyboard Shortcuts → Services (Files and Folders)."
+# Enable it in Finder's right-click menu (macOS keeps new services switched off)
+defaults write pbs NSServicesStatus -dict-add '"(null) - Send to TV - runWorkflowAsService"' \
+  '{ "enabled_context_menu" = 1; "enabled_services_menu" = 1; "presentation_modes" = { ContextMenu = 1; ServicesMenu = 1; TouchBar = 1; }; }'
+/System/Library/CoreServices/pbs -update >/dev/null 2>&1 || true
+
+# Droplet app: drag files onto it (Dock, Finder toolbar or sidebar). Works even when Quick Actions don't show up.
+mkdir -p "$HOME/Applications"
+osacompile -o "$HOME/Applications/Send to TV.app" "$here/SendToTV.applescript"
+icon=/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/com.apple.appletv.icns
+[ -f "$icon" ] && cp "$icon" "$HOME/Applications/Send to TV.app/Contents/Resources/applet.icns" && touch "$HOME/Applications/Send to TV.app"
+echo "Installed: ~/bin/send-to-tv, Finder Quick Action \"Send to TV\", and ~/Applications/Send to TV.app (droplet)"
+echo "Quick Action missing? Relaunch Finder, or open the workflow in Automator and press Cmd+S once. Or use the droplet: drag Send to TV.app into the Dock."

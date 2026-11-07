@@ -40,7 +40,9 @@ mac/install-quick-action.sh 192.168.0.127   # optional TV IP fallback if tv-dl.l
 This installs:
 - `~/bin/send-to-tv FILE...`: a command-line upload with a progress bar.
 - A Finder **Quick Action "Send to TV"**: right-click files → Quick Actions → Send to TV. It runs in the background and shows notifications.
-  If it's missing, enable it under System Settings → Keyboard → Keyboard Shortcuts → Services.
+  If it's missing, relaunch Finder, or open `~/Library/Services/Send to TV.workflow` in Automator and press ⌘S once.
+- **`~/Applications/Send to TV.app`**, a droplet: drag it into the Dock, or ⌘-drag it into the Finder toolbar, then drop files on it.
+  Double-click it to pick files.
 
 The TV is found automatically at `tv-dl.local` (ports 80 and 8090), then at the configured IP. The log is in `~/Library/Logs/send-to-tv.log`.
 
