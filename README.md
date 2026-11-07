@@ -80,3 +80,11 @@ node dev/serve.js
 # Web page: http://127.0.0.1:8090/
 ```
 The dev mode uses a fake drive in `dev/media/USBDriveA1`, binds the web page to localhost only, and disables mDNS.
+
+## Releasing an update
+TizenBrew loads `gh/5hanth/tv-downloader` from jsDelivr without a version. jsDelivr resolves that to the **latest git tag**
+and caches each file for up to 12 hours.
+1. Bump `version` in `package.json`, commit, push, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+2. Purge: `https://purge.jsdelivr.net/gh/5hanth/tv-downloader/<file>` for `service/service.js`, `app/index.html`, `package.json`.
+   Purges are rate-limited, about once an hour per file.
+3. UI changes appear when the module is reopened. **Service changes need a TizenBrew restart**: hold the remote's power button about 5 s.

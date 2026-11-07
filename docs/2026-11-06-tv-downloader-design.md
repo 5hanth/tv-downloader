@@ -55,3 +55,13 @@ TV: Samsung UA32N4300 (2018, Tizen 4), TizenBrew 2.0.5. Feasibility proven in
   - Port 80 isn't allowed, so the page is served on **8090**.
   - Inbound LAN connections work.
   - The pen drive is seen as `USBDriveA1` (vfat).
+
+## 2026-11-07 — speed control, mDNS fix, release process
+- Player: Yellow key cycles playback speed 1/1.25/1.5/1.75/2×. Tested headless. If the TV ignores `playbackRate`, the UI shows a toast.
+- mDNS: Mac and phone resolvers waited **5 s** for an IPv6 (AAAA) answer. The service now answers AAAA with an NSEC
+  ("A only") and adds NSEC to A answers. Tested locally: lookup went from 5 s to 0.015 s.
+- **Gotchas found:**
+  - The TizenBrew service survives closing TizenBrew. Only a TV reboot (hold power) restarts it.
+  - jsDelivr's version-less `gh/` URL ≠ `@main`. It resolves to the latest tag and is cached per file.
+  - Purges are throttled to about once an hour.
+  - Fix: tag releases (v0.2.0) and purge the version-less URLs.
