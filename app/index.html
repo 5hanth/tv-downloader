@@ -54,6 +54,8 @@ body { font-size: 1.5vw; }
 #osdTitle { font-size: 1.6vw; font-weight: 700; margin-bottom: 1.2vh; }
 #osdBar { height: 0.8vh; background: rgba(255,255,255,0.25); border-radius: 0.4vh; }
 #osdBar i { display: block; height: 100%; background: #f2b84b; border-radius: 0.4vh; width: 0; }
+#osdSpeed { color: #f2b84b; }
+#speedBadge { position: absolute; right: 3vw; top: 4vh; background: rgba(0,0,0,0.7); color: #f2b84b; font-size: 2.4vw; font-weight: 700; padding: 1vh 1.4vw; border-radius: 1vh; display: none; }
 #osdTime { font-size: 1.1vw; color: #ccc; margin-top: 1vh; display: flex; justify-content: space-between; }
 </style>
 </head>
@@ -75,7 +77,8 @@ body { font-size: 1.5vw; }
 <div id="toast"></div>
 <div id="player">
   <video id="video"></video>
-  <div id="osd"><div id="osdTitle"></div><div id="osdBar"><i></i></div><div id="osdTime"><span id="osdCur"></span><span id="osdHint">OK play/pause · ◀▶ 10s · ▲▼ 1 min · BACK close</span><span id="osdDur"></span></div></div>
+  <div id="speedBadge"></div>
+  <div id="osd"><div id="osdTitle"></div><div id="osdBar"><i></i></div><div id="osdTime"><span id="osdCur"></span><span id="osdHint">OK play/pause · ◀▶ 10s · ▲▼ 1 min · <i class="key" style="background:#e6c229"></i>speed <b id="osdSpeed">1×</b> · BACK close</span><span id="osdDur"></span></div></div>
 </div>
 
 <script>
@@ -83,7 +86,8 @@ body { font-size: 1.5vw; }
   'use strict';
   var API = 'http://127.0.0.1:8091';
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8, RED: 403,
-    PLAYPAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412 };
+    PLAYPAUSE: 10252, PLAY: 415, PAUSE: 19, STOP: 413, FF: 417, RW: 412, YELLOW: 405 };
+  var SPEEDS = [1, 1.25, 1.5, 1.75, 2];
   var TABS = ['Links', 'Downloads'];
   var $ = function (id) { return document.getElementById(id); };
 
@@ -252,6 +256,7 @@ body { font-size: 1.5vw; }
   function play(name) {
     $('player').className = 'open';
     $('osdTitle').textContent = name;
+    v.onloadedmetadata = function () { applySpeed(false); };
     v.src = API + '/file?name=' + encodeURIComponent(name);
     v.play();
     showOSD();
@@ -268,6 +273,22 @@ body { font-size: 1.5vw; }
   };
   v.onerror = function () { toast('Cannot play this file (format not supported by the TV)'); setTimeout(closePlayer, 2500); };
   v.onended = function () { showOSD(); };
+  var speedIdx = 0, badgeTimer;
+  function applySpeed(show) {
+    var r = SPEEDS[speedIdx];
+    try { v.playbackRate = r; v.defaultPlaybackRate = r; } catch (e) {}
+    $('osdSpeed').textContent = r + '×';
+    if (show) {
+      var b = $('speedBadge');
+      b.textContent = r === 1 ? 'Normal speed' : r + '×';
+      b.style.display = 'block';
+      clearTimeout(badgeTimer);
+      badgeTimer = setTimeout(function () { b.style.display = 'none'; }, 1800);
+      // Some TV engines silently ignore playbackRate; tell the user instead of pretending.
+      setTimeout(function () { if (Math.abs(v.playbackRate - r) > 0.01) toast('This TV does not support speed change for this file'); }, 400);
+    }
+  }
+  function cycleSpeed() { speedIdx = (speedIdx + 1) % SPEEDS.length; applySpeed(true); showOSD(); }
   function seek(d) { if (isFinite(v.duration)) v.currentTime = Math.max(0, Math.min(v.duration - 1, v.currentTime + d)); showOSD(); }
 
   // ---------------------------------------------------------------- input
@@ -277,6 +298,7 @@ body { font-size: 1.5vw; }
       if (k === KEY.ENTER || k === KEY.PLAYPAUSE) { if (v.paused) v.play(); else v.pause(); showOSD(); }
       else if (k === KEY.PLAY) { v.play(); showOSD(); }
       else if (k === KEY.PAUSE) { v.pause(); showOSD(); }
+      else if (k === KEY.YELLOW) cycleSpeed();
       else if (k === KEY.RIGHT || k === KEY.FF) seek(10);
       else if (k === KEY.LEFT || k === KEY.RW) seek(-10);
       else if (k === KEY.UP) seek(60);
@@ -305,7 +327,7 @@ body { font-size: 1.5vw; }
   });
 
   if (window.tizen && tizen.tvinputdevice) {
-    ['ColorF0Red', 'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind'].forEach(function (k) {
+    ['ColorF0Red', 'ColorF2Yellow', 'MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind'].forEach(function (k) {
       try { tizen.tvinputdevice.registerKey(k); } catch (e) {}
     });
   }

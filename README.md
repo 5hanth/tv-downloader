@@ -25,6 +25,7 @@ read or delete files on the drive, and downloads can only be started from the TV
 | Player | OK / ⏯ | Play / pause |
 | | ◀ ▶ / ⏪ ⏩ | −/+ 10 s |
 | | ▲ ▼ | +/− 1 min |
+| | 🟡 Yellow | Playback speed: 1× → 1.25× → 1.5× → 1.75× → 2× → 1× |
 | | BACK / ⏹ | Close |
 | Any | ◀ ▶ (in list) | Switch tab |
 

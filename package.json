@@ -1,11 +1,11 @@
 {
   "name": "tv-downloader",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Download manager for Samsung Tizen TVs (TizenBrew): add links from your phone at http://tv-dl.local, download to USB from the TV, browse and play.",
   "packageType": "app",
   "appName": "TV Downloads",
   "appPath": "app/index.html",
   "serviceFile": "service/service.js",
-  "keys": ["ColorF0Red", "MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop", "MediaFastForward", "MediaRewind"],
+  "keys": ["ColorF0Red", "ColorF2Yellow", "MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop", "MediaFastForward", "MediaRewind"],
   "license": "MIT"
 }
